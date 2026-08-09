@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { getToken, getUser, removeToken } from '../services/api';
+import { fetchCurrentUser, logoutUser } from '../services/api';
 import { Utensils, CreditCard, CalendarX, LayoutDashboard, LogOut, User, KeyRound, Menu, X } from 'lucide-react';
 
 export default function Navbar() {
@@ -13,12 +13,19 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const token = getToken();
-    if (token) {
-      setCurrentUser(getUser());
-    } else {
+    let isMounted = true;
+    if (pathname === '/login' || pathname === '/register' || pathname.startsWith('/share/')) {
       setCurrentUser(null);
+    } else {
+      fetchCurrentUser().then((user) => {
+        if (isMounted) {
+          setCurrentUser(user);
+        }
+      });
     }
+    return () => {
+      isMounted = false;
+    };
   }, [pathname]);
 
   // Hide complete navbar on public share statement pages, login, and register
@@ -26,8 +33,8 @@ export default function Navbar() {
     return null;
   }
 
-  const handleLogout = () => {
-    removeToken();
+  const handleLogout = async () => {
+    await logoutUser();
     setCurrentUser(null);
     setMobileMenuOpen(false);
     router.push('/login');

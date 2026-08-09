@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchApi, getToken } from '../../services/api';
+import { fetchApi } from '../../services/api';
 import { CalendarX, Plus, Trash2, Edit2, AlertCircle, CheckCircle2, Calendar, Utensils, Info } from 'lucide-react';
 
 interface MealException {
@@ -58,13 +58,8 @@ export default function MealExceptionsPage() {
   };
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push('/login');
-      return;
-    }
     loadExceptions(1);
-  }, [router]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

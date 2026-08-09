@@ -7,14 +7,18 @@ export interface AuthRequest extends Request {
 }
 
 export async function authenticateJWT(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  const authHeader = req.headers.authorization;
+  // Read token from HttpOnly cookie first, fallback to Authorization header
+  const tokenFromCookie = req.cookies?.auth_token;
+  const tokenFromHeader = req.headers?.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.split(' ')[1]
+    : null;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = tokenFromCookie || tokenFromHeader;
+
+  if (!token) {
     res.status(401).json({ error: 'Authentication token required' });
     return;
   }
-
-  const token = authHeader.split(' ')[1];
 
   try {
     const payload = verifyToken(token);

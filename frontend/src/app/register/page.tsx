@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { fetchApi, setToken, setUser } from '../../services/api';
+import { fetchApi } from '../../services/api';
 import { Utensils, UserPlus, AlertCircle } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -20,13 +20,11 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const data = await fetchApi('/auth/register', {
+      await fetchApi('/auth/register', {
         method: 'POST',
         body: JSON.stringify({ name, email, password })
       });
 
-      setToken(data.token);
-      setUser(data.user);
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');

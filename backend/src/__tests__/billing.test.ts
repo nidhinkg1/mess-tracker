@@ -3,9 +3,9 @@ import app from '../app';
 import prisma from '../prisma/client';
 
 describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
-  let userToken: string;
+  let userCookie: string[];
   let userId: string;
-  let otherUserToken: string;
+  let otherUserCookie: string[];
   let otherUserId: string;
 
   beforeAll(async () => {
@@ -27,7 +27,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
       email: 'resident@test.com',
       password: 'password123'
     });
-    userToken = regRes.body.token;
+    userCookie = regRes.get('Set-Cookie') || [];
     userId = regRes.body.user.id;
 
     // Register second test user
@@ -36,7 +36,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
       email: 'other@test.com',
       password: 'password123'
     });
-    otherUserToken = regRes2.body.token;
+    otherUserCookie = regRes2.get('Set-Cookie') || [];
     otherUserId = regRes2.body.user.id;
   });
 
@@ -63,7 +63,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('calculates default billing for August', async () => {
       const res = await request(app)
         .get('/api/billing/monthly?year=2026&month=8')
-        .set('Authorization', `Bearer ${userToken}`);
+        .set('Cookie', userCookie);
 
       expect(res.status).toBe(200);
       expect(res.body.daysInMonth).toBe(31);
@@ -76,12 +76,12 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('handles February non-leap year (28 days) and leap year (29 days)', async () => {
       const feb2026 = await request(app)
         .get('/api/billing/monthly?year=2026&month=2')
-        .set('Authorization', `Bearer ${userToken}`);
+        .set('Cookie', userCookie);
       expect(feb2026.body.daysInMonth).toBe(28);
 
       const feb2028 = await request(app)
         .get('/api/billing/monthly?year=2028&month=2')
-        .set('Authorization', `Bearer ${userToken}`);
+        .set('Cookie', userCookie);
       expect(feb2028.body.daysInMonth).toBe(29);
     });
   });
@@ -90,7 +90,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('creates DINNER_ONLY exception (actual cost ₹50, deduction ₹65)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ date: '2026-08-10', type: 'DINNER_ONLY' });
 
       expect(res.status).toBe(201);
@@ -101,7 +101,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('creates NO_FOOD exception (actual cost ₹0, deduction ₹115)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ date: '2026-08-11', type: 'NO_FOOD' });
 
       expect(res.status).toBe(201);
@@ -112,7 +112,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('creates LUNCH_ONLY exception (actual cost ₹70, deduction ₹45)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ date: '2026-08-12', type: 'LUNCH_ONLY' });
 
       expect(res.status).toBe(201);
@@ -123,7 +123,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('ignores client-submitted arbitrary amount and computes backend pricing strictly', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ date: '2026-08-13', type: 'NO_FOOD', amount: 50 });
 
       expect(res.status).toBe(201);
@@ -134,7 +134,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('rejects duplicate exception for same user and date (409 Conflict)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ date: '2026-08-10', type: 'LUNCH_ONLY' });
 
       expect(res.status).toBe(409);
@@ -143,7 +143,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('rejects invalid exception type (400 Bad Request)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ date: '2026-08-14', type: 'BREAKFAST_ONLY' });
 
       expect(res.status).toBe(400);
@@ -154,7 +154,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('rejects zero or negative advance payment amounts (400 Bad Request)', async () => {
       const res = await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ amount: 0, paymentDate: '2026-08-01' });
       expect(res.status).toBe(400);
     });
@@ -162,7 +162,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('creates valid advance payment', async () => {
       const res = await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ amount: 3000, paymentDate: '2026-08-01', note: 'Initial advance' });
 
       expect(res.status).toBe(201);
@@ -172,7 +172,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('calculates monthly bill when Advance Paid < Actual Bill', async () => {
       const res = await request(app)
         .get('/api/billing/monthly?year=2026&month=8')
-        .set('Authorization', `Bearer ${userToken}`);
+        .set('Cookie', userCookie);
 
       expect(res.status).toBe(200);
       expect(res.body.actualBill).toBe(3225);
@@ -188,7 +188,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('creates a secure random share token for August 2026', async () => {
       const res = await request(app)
         .post('/api/billing/share')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ year: 2026, month: 8 });
 
       expect(res.status).toBe(201);
@@ -248,7 +248,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('revokes share link and denies public access afterwards (404)', async () => {
       const revokeRes = await request(app)
         .post('/api/billing/share/revoke')
-        .set('Authorization', `Bearer ${userToken}`)
+        .set('Cookie', userCookie)
         .send({ year: 2026, month: 8 });
 
       expect(revokeRes.status).toBe(200);
@@ -262,7 +262,7 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('prevents user from revoking another user share link', async () => {
       const revokeRes = await request(app)
         .post('/api/billing/share/revoke')
-        .set('Authorization', `Bearer ${otherUserToken}`)
+        .set('Cookie', otherUserCookie)
         .send({ year: 2026, month: 8 });
 
       expect(revokeRes.status).toBe(404);
@@ -278,12 +278,12 @@ describe('Mess Expense Tracker API Integration & Billing Unit Tests', () => {
     it('prevents user from accessing another user data', async () => {
       const listRes = await request(app)
         .get('/api/payments')
-        .set('Authorization', `Bearer ${userToken}`);
+        .set('Cookie', userCookie);
       const paymentId = listRes.body[0].id;
 
       const unauthorizedRes = await request(app)
         .get(`/api/payments/${paymentId}`)
-        .set('Authorization', `Bearer ${otherUserToken}`);
+        .set('Cookie', otherUserCookie);
 
       expect(unauthorizedRes.status).toBe(403);
     });

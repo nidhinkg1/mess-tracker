@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { fetchApi, setToken, setUser } from '../../services/api';
+import { fetchApi } from '../../services/api';
 import { Utensils, LogIn, AlertCircle, Info } from 'lucide-react';
 
 function LoginForm() {
@@ -28,13 +28,11 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const data = await fetchApi('/auth/login', {
+      await fetchApi('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password })
       });
 
-      setToken(data.token);
-      setUser(data.user);
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');

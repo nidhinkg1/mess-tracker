@@ -3,9 +3,9 @@ import app from '../app';
 import prisma from '../prisma/client';
 
 describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
-  let userAToken: string;
+  let userACookie: string[];
   let userAId: string;
-  let userBToken: string;
+  let userBCookie: string[];
   let userBId: string;
 
   const userAEmail = 'e2e_user_a@test.com';
@@ -31,7 +31,8 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       password: 'password123'
     });
     expect(regA.status).toBe(201);
-    userAToken = regA.body.token;
+    expect(regA.get('Set-Cookie')).toBeDefined();
+    userACookie = regA.get('Set-Cookie') || [];
     userAId = regA.body.user.id;
 
     // Register User B
@@ -41,7 +42,8 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       password: 'password123'
     });
     expect(regB.status).toBe(201);
-    userBToken = regB.body.token;
+    expect(regB.get('Set-Cookie')).toBeDefined();
+    userBCookie = regB.get('Set-Cookie') || [];
     userBId = regB.body.user.id;
   });
 
@@ -80,29 +82,64 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       expect(res.status).toBe(401);
     });
 
-    it('successfully logs in with correct password', async () => {
+    it('successfully logs in with correct password and sets HttpOnly cookie', async () => {
       const res = await request(app).post('/api/auth/login').send({
         email: userAEmail,
         password: 'password123'
       });
       expect(res.status).toBe(200);
-      expect(res.body.token).toBeDefined();
+      expect(res.get('Set-Cookie')).toBeDefined();
+      expect(res.get('Set-Cookie')![0]).toContain('auth_token=');
+      expect(res.body.token).toBeUndefined(); // JWT is not exposed in JSON body for localStorage
       expect(res.body.user.email).toBe(userAEmail);
+
+      // Save cookie for subsequent requests
+      userACookie = res.get('Set-Cookie') || [];
     });
 
-    it('fetches authenticated user profile (/api/auth/me)', async () => {
+    it('fetches authenticated user profile (/api/auth/me) with cookie', async () => {
       const res = await request(app)
         .get('/api/auth/me')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
       expect(res.status).toBe(200);
       expect(res.body.name).toBe('User Alpha');
       expect(res.body.email).toBe(userAEmail);
     });
 
+    it('rejects protected endpoint request without cookie (401 Unauthorized)', async () => {
+      const res = await request(app).get('/api/auth/me');
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects protected endpoint request with invalid cookie (401 Unauthorized)', async () => {
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Cookie', ['auth_token=invalid_token_string; Path=/']);
+      expect(res.status).toBe(401);
+    });
+
+    it('logs out successfully and clears the auth cookie', async () => {
+      const res = await request(app)
+        .post('/api/auth/logout')
+        .set('Cookie', userACookie);
+      expect(res.status).toBe(200);
+      expect(res.get('Set-Cookie')).toBeDefined();
+      // Verify cookie cleared
+      const setCookieHeader = res.get('Set-Cookie')![0];
+      expect(setCookieHeader).toContain('auth_token=;');
+    });
+
     it('resets user password and verifies login with new password', async () => {
+      // Relogin User A to get active cookie after logout test
+      const loginRes = await request(app).post('/api/auth/login').send({
+        email: userAEmail,
+        password: 'password123'
+      });
+      userACookie = loginRes.get('Set-Cookie') || [];
+
       const resetRes = await request(app)
         .post('/api/auth/reset-password')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ newPassword: 'newpassword123' });
       expect(resetRes.status).toBe(200);
 
@@ -117,7 +154,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
         password: 'newpassword123'
       });
       expect(newLoginRes.status).toBe(200);
-      userAToken = newLoginRes.body.token; // Update token
+      userACookie = newLoginRes.get('Set-Cookie') || [];
     });
   });
 
@@ -129,13 +166,13 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       // Create a payment and exception for User A
       const pRes = await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 1500, paymentDate: '2026-08-05', note: 'User A Secret Payment' });
       userAPaymentId = pRes.body.id;
 
       const eRes = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2026-08-05', type: 'NO_FOOD' });
       userAExceptionId = eRes.body.id;
     });
@@ -143,14 +180,14 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('prevents User B from accessing User A payment by ID (403 Forbidden)', async () => {
       const res = await request(app)
         .get(`/api/payments/${userAPaymentId}`)
-        .set('Authorization', `Bearer ${userBToken}`);
+        .set('Cookie', userBCookie);
       expect(res.status).toBe(403);
     });
 
     it('prevents User B from modifying User A payment (403 Forbidden)', async () => {
       const res = await request(app)
         .put(`/api/payments/${userAPaymentId}`)
-        .set('Authorization', `Bearer ${userBToken}`)
+        .set('Cookie', userBCookie)
         .send({ amount: 9999 });
       expect(res.status).toBe(403);
     });
@@ -158,21 +195,21 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('prevents User B from deleting User A payment (403 Forbidden)', async () => {
       const res = await request(app)
         .delete(`/api/payments/${userAPaymentId}`)
-        .set('Authorization', `Bearer ${userBToken}`);
+        .set('Cookie', userBCookie);
       expect(res.status).toBe(403);
     });
 
     it('prevents User B from accessing User A meal exception by ID (403 Forbidden)', async () => {
       const res = await request(app)
         .get(`/api/meal-exceptions/${userAExceptionId}`)
-        .set('Authorization', `Bearer ${userBToken}`);
+        .set('Cookie', userBCookie);
       expect(res.status).toBe(403);
     });
 
     it('prevents User B from modifying User A meal exception (403 Forbidden)', async () => {
       const res = await request(app)
         .put(`/api/meal-exceptions/${userAExceptionId}`)
-        .set('Authorization', `Bearer ${userBToken}`)
+        .set('Cookie', userBCookie)
         .send({ type: 'LUNCH_ONLY' });
       expect(res.status).toBe(403);
     });
@@ -180,14 +217,14 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('prevents User B from deleting User A meal exception (403 Forbidden)', async () => {
       const res = await request(app)
         .delete(`/api/meal-exceptions/${userAExceptionId}`)
-        .set('Authorization', `Bearer ${userBToken}`);
+        .set('Cookie', userBCookie);
       expect(res.status).toBe(403);
     });
 
     it('ensures User B payment list does not contain User A payments', async () => {
       const res = await request(app)
         .get('/api/payments')
-        .set('Authorization', `Bearer ${userBToken}`);
+        .set('Cookie', userBCookie);
       expect(res.status).toBe(200);
       expect(res.body.find((p: any) => p.id === userAPaymentId)).toBeUndefined();
     });
@@ -199,7 +236,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('rejects zero payment amount (400 Bad Request)', async () => {
       const res = await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 0, paymentDate: '2026-08-01' });
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('greater than 0');
@@ -208,7 +245,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('rejects negative payment amount (400 Bad Request)', async () => {
       const res = await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: -500, paymentDate: '2026-08-01' });
       expect(res.status).toBe(400);
     });
@@ -216,7 +253,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('rejects invalid payment date format (400 Bad Request)', async () => {
       const res = await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 1000, paymentDate: 'not-a-valid-date' });
       expect(res.status).toBe(400);
     });
@@ -224,13 +261,13 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('updates payment record and note', async () => {
       const createRes = await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 2000, paymentDate: '2026-08-10', note: 'Initial GPay' });
       paymentId = createRes.body.id;
 
       const updateRes = await request(app)
         .put(`/api/payments/${paymentId}`)
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 2500, note: 'Updated GPay + Cash' });
 
       expect(updateRes.status).toBe(200);
@@ -241,12 +278,12 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('deletes payment record and verifies list length decrease', async () => {
       const delRes = await request(app)
         .delete(`/api/payments/${paymentId}`)
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
       expect(delRes.status).toBe(200);
 
       const getRes = await request(app)
         .get(`/api/payments/${paymentId}`)
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
       expect(getRes.status).toBe(404);
     });
   });
@@ -255,7 +292,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('creates LUNCH_ONLY exception (Actual ₹70, Deduction ₹45)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2026-08-12', type: 'LUNCH_ONLY' });
 
       expect(res.status).toBe(201);
@@ -267,7 +304,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('creates DINNER_ONLY exception (Actual ₹50, Deduction ₹65)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2026-08-13', type: 'DINNER_ONLY' });
 
       expect(res.status).toBe(201);
@@ -278,7 +315,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('creates NO_FOOD exception (Actual ₹0, Deduction ₹115)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2026-08-14', type: 'NO_FOOD' });
 
       expect(res.status).toBe(201);
@@ -289,7 +326,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('rejects duplicate exception date for same user (409 Conflict)', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2026-08-12', type: 'NO_FOOD' });
 
       expect(res.status).toBe(409);
@@ -299,14 +336,14 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('updates exception type from LUNCH_ONLY to NO_FOOD', async () => {
       const listRes = await request(app)
         .get('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
       
       const lunchExc = listRes.body.find((e: any) => e.formattedDate === '2026-08-12');
       expect(lunchExc).toBeDefined();
 
       const updateRes = await request(app)
         .put(`/api/meal-exceptions/${lunchExc.id}`)
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ type: 'NO_FOOD' });
 
       expect(updateRes.status).toBe(200);
@@ -319,7 +356,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('31-day month calculation (August 2026)', async () => {
       const res = await request(app)
         .get('/api/billing/monthly?year=2026&month=8')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.status).toBe(200);
       expect(res.body.daysInMonth).toBe(31);
@@ -329,7 +366,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('30-day month calculation (June 2026)', async () => {
       const res = await request(app)
         .get('/api/billing/monthly?year=2026&month=6')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.status).toBe(200);
       expect(res.body.daysInMonth).toBe(30);
@@ -339,7 +376,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('February 28-day non-leap year calculation (Feb 2026)', async () => {
       const res = await request(app)
         .get('/api/billing/monthly?year=2026&month=2')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.status).toBe(200);
       expect(res.body.daysInMonth).toBe(28);
@@ -349,7 +386,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('February 29-day leap year calculation (Feb 2028)', async () => {
       const res = await request(app)
         .get('/api/billing/monthly?year=2028&month=2')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.status).toBe(200);
       expect(res.body.daysInMonth).toBe(29);
@@ -362,26 +399,26 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       // Create exception on Dec 31, 2026
       await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2026-12-31', type: 'NO_FOOD' });
 
       // Create exception on Jan 1, 2027
       await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2027-01-01', type: 'DINNER_ONLY' });
 
       // Dec 2026 billing should only include Dec 31
       const decRes = await request(app)
         .get('/api/billing/monthly?year=2026&month=12')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
       expect(decRes.body.exceptionDaysCount).toBe(1);
       expect(decRes.body.exceptions[0].date).toBe('2026-12-31');
 
       // Jan 2027 billing should only include Jan 1
       const janRes = await request(app)
         .get('/api/billing/monthly?year=2027&month=1')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
       expect(janRes.body.exceptionDaysCount).toBe(1);
       expect(janRes.body.exceptions[0].date).toBe('2027-01-01');
     });
@@ -395,12 +432,12 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       // Add payment 3000
       await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 3000, paymentDate: `${testYear}-05-01` });
 
       const res = await request(app)
         .get(`/api/billing/monthly?year=${testYear}&month=${testMonth}`)
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.body.actualBill).toBe(3565);
       expect(res.body.totalAdvancePaid).toBe(3000);
@@ -413,12 +450,12 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       // Add additional payment 565
       await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 565, paymentDate: `${testYear}-05-02` });
 
       const res = await request(app)
         .get(`/api/billing/monthly?year=${testYear}&month=${testMonth}`)
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.body.actualBill).toBe(3565);
       expect(res.body.totalAdvancePaid).toBe(3565);
@@ -431,12 +468,12 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
       // Add additional payment 500
       await request(app)
         .post('/api/payments')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ amount: 500, paymentDate: `${testYear}-05-03` });
 
       const res = await request(app)
         .get(`/api/billing/monthly?year=${testYear}&month=${testMonth}`)
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.body.actualBill).toBe(3565);
       expect(res.body.totalAdvancePaid).toBe(4065);
@@ -452,7 +489,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('generates a public share token', async () => {
       const res = await request(app)
         .post('/api/billing/share')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ year: 2026, month: 8 });
 
       expect(res.status).toBe(201);
@@ -477,7 +514,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('verifies calculations in public statement match private billing endpoint', async () => {
       const privateRes = await request(app)
         .get('/api/billing/monthly?year=2026&month=8')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       const publicRes = await request(app).get(`/api/share/${token}`);
 
@@ -493,7 +530,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('revokes share link and denies access with 404', async () => {
       const revokeRes = await request(app)
         .post('/api/billing/share/revoke')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ year: 2026, month: 8 });
 
       expect(revokeRes.status).toBe(200);
@@ -507,7 +544,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('returns 400 Bad Request on invalid year or month in billing query', async () => {
       const res = await request(app)
         .get('/api/billing/monthly?year=invalid&month=13')
-        .set('Authorization', `Bearer ${userAToken}`);
+        .set('Cookie', userACookie);
 
       expect(res.status).toBe(400);
     });
@@ -515,7 +552,7 @@ describe('Exhaustive E2E MVP Pre-Live Matrix Test Suite', () => {
     it('returns 400 Bad Request on invalid exception type', async () => {
       const res = await request(app)
         .post('/api/meal-exceptions')
-        .set('Authorization', `Bearer ${userAToken}`)
+        .set('Cookie', userACookie)
         .send({ date: '2026-08-20', type: 'INVALID_MEAL_TYPE' });
 
       expect(res.status).toBe(400);

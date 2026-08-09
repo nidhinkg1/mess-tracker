@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { fetchApi, getToken } from '../../services/api';
+import { fetchApi } from '../../services/api';
 import {
   Calendar,
   CreditCard,
@@ -94,13 +94,8 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push('/login');
-      return;
-    }
     loadBilling(year, month);
-  }, [router, year, month]);
+  }, [year, month]);
 
   const handleGenerateShareLink = async () => {
     setShareLoading(true);

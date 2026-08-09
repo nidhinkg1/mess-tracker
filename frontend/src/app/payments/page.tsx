@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchApi, getToken } from '../../services/api';
+import { fetchApi } from '../../services/api';
 import { CreditCard, Plus, Trash2, Edit2, AlertCircle, CheckCircle2, Calendar, FileText } from 'lucide-react';
 
 interface AdvancePayment {
@@ -57,13 +57,8 @@ export default function PaymentsPage() {
   };
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push('/login');
-      return;
-    }
     loadPayments(1);
-  }, [router]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
