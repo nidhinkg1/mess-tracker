@@ -74,12 +74,14 @@ export default function DashboardPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchApi(`/billing/monthly?year=${y}&month=${m}`);
-      setBilling(data);
+      const [billingData, shareStatus] = await Promise.all([
+        fetchApi(`/billing/monthly?year=${y}&month=${m}`),
+        fetchApi(`/billing/share/status?year=${y}&month=${m}`)
+      ]);
 
-      // Check existing share status for this month
-      const shareStatus = await fetchApi(`/billing/share/status?year=${y}&month=${m}`);
-      if (shareStatus.active && shareStatus.token) {
+      setBilling(billingData);
+
+      if (shareStatus && shareStatus.active && shareStatus.token) {
         setShareToken(shareStatus.token);
       } else {
         setShareToken(null);

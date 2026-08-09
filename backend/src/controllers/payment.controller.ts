@@ -17,7 +17,9 @@ export async function createPayment(req: AuthRequest, res: Response, next: NextF
 export async function getPayments(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.userId;
-    const payments = await paymentService.getUserPayments(userId);
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
+    const payments = await paymentService.getUserPayments(userId, page, limit);
     res.status(200).json(payments);
   } catch (error) {
     next(error);

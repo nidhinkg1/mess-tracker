@@ -18,7 +18,9 @@ export async function createException(req: AuthRequest, res: Response, next: Nex
 export async function getExceptions(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.userId;
-    const exceptions = await exceptionService.getUserExceptions(userId);
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
+    const exceptions = await exceptionService.getUserExceptions(userId, page, limit);
     res.status(200).json(exceptions);
   } catch (error) {
     next(error);

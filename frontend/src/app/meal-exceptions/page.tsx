@@ -29,13 +29,27 @@ export default function MealExceptionsPage() {
   const [type, setType] = useState<'DINNER_ONLY' | 'LUNCH_ONLY' | 'NO_FOOD'>('NO_FOOD');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Pagination states
+  const [page, setPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
+  const limit = 20;
 
-  const loadExceptions = async () => {
+  const loadExceptions = async (targetPage = page) => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchApi('/meal-exceptions');
-      setExceptions(data);
+      const res = await fetchApi(`/meal-exceptions?page=${targetPage}&limit=${limit}`);
+      if (res && res.data && res.pagination) {
+        setExceptions(res.data);
+        setPage(res.pagination.page);
+        setTotalPages(res.pagination.totalPages);
+        setTotalRecords(res.pagination.total);
+      } else if (Array.isArray(res)) {
+        setExceptions(res);
+        setTotalRecords(res.length);
+        setTotalPages(1);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load meal exceptions');
     } finally {
@@ -49,7 +63,7 @@ export default function MealExceptionsPage() {
       router.push('/login');
       return;
     }
-    loadExceptions();
+    loadExceptions(1);
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -351,6 +365,30 @@ export default function MealExceptionsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
+              <span className="text-slate-500 font-medium">
+                Page {page} of {totalPages} ({totalRecords} total records)
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => loadExceptions(page - 1)}
+                  disabled={page <= 1}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold disabled:opacity-40 hover:bg-slate-200 transition"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => loadExceptions(page + 1)}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold disabled:opacity-40 hover:bg-slate-200 transition"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

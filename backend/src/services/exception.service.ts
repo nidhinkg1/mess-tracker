@@ -47,7 +47,44 @@ export async function createException(
   };
 }
 
-export async function getUserExceptions(userId: string) {
+export async function getUserExceptions(userId: string, page?: number, limit?: number) {
+  if (page && limit && page > 0 && limit > 0) {
+    const validPage = Math.max(1, page);
+    const validLimit = Math.min(100, Math.max(1, limit));
+    const skip = (validPage - 1) * validLimit;
+    const [rawExceptions, total] = await Promise.all([
+      prisma.mealException.findMany({
+        where: { userId },
+        orderBy: { date: 'asc' },
+        skip,
+        take: validLimit
+      }),
+      prisma.mealException.count({ where: { userId } })
+    ]);
+
+    const data = rawExceptions.map((exc) => {
+      const price = getExceptionPrice(exc.type);
+      const deduction = getExceptionDeduction(exc.type);
+      return {
+        ...exc,
+        formattedDate: formatToYYYYMMDD(exc.date),
+        normalDailyPrice: DEFAULT_DAILY_RATE,
+        actualPrice: price,
+        deduction: deduction
+      };
+    });
+
+    return {
+      data,
+      pagination: {
+        page: validPage,
+        limit: validLimit,
+        total,
+        totalPages: Math.ceil(total / validLimit)
+      }
+    };
+  }
+
   const exceptions = await prisma.mealException.findMany({
     where: { userId },
     orderBy: { date: 'asc' }

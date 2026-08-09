@@ -135,17 +135,29 @@ export async function getPublicMonthlyStatement(token: string) {
   const startDate = getStartOfMonth(year, month);
   const endDate = getEndOfMonth(year, month);
 
-  // Fetch advance payments
-  const allPayments = await prisma.advancePayment.findMany({
-    where: {
-      userId,
-      paymentDate: {
-        gte: startDate,
-        lte: endDate
-      }
-    },
-    orderBy: { paymentDate: 'asc' }
-  });
+  // Fetch advance payments and meal exceptions concurrently
+  const [allPayments, allExceptions] = await Promise.all([
+    prisma.advancePayment.findMany({
+      where: {
+        userId,
+        paymentDate: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      orderBy: { paymentDate: 'asc' }
+    }),
+    prisma.mealException.findMany({
+      where: {
+        userId,
+        date: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      orderBy: { date: 'asc' }
+    })
+  ]);
 
   const advancePayments = allPayments.filter((p) => isDateInMonth(p.paymentDate, year, month));
   const totalAdvancePaid = advancePayments.reduce((sum, p) => sum + p.amount, 0);
@@ -156,18 +168,6 @@ export async function getPublicMonthlyStatement(token: string) {
     paymentDate: formatToYYYYMMDD(p.paymentDate),
     note: p.note
   }));
-
-  // Fetch meal exceptions
-  const allExceptions = await prisma.mealException.findMany({
-    where: {
-      userId,
-      date: {
-        gte: startDate,
-        lte: endDate
-      }
-    },
-    orderBy: { date: 'asc' }
-  });
 
   const mealExceptions = allExceptions.filter((exc) => isDateInMonth(exc.date, year, month));
 

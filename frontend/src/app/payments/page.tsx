@@ -28,13 +28,27 @@ export default function PaymentsPage() {
   const [note, setNote] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Pagination states
+  const [page, setPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
+  const limit = 20;
 
-  const loadPayments = async () => {
+  const loadPayments = async (targetPage = page) => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchApi('/payments');
-      setPayments(data);
+      const res = await fetchApi(`/payments?page=${targetPage}&limit=${limit}`);
+      if (res && res.data && res.pagination) {
+        setPayments(res.data);
+        setPage(res.pagination.page);
+        setTotalPages(res.pagination.totalPages);
+        setTotalRecords(res.pagination.total);
+      } else if (Array.isArray(res)) {
+        setPayments(res);
+        setTotalRecords(res.length);
+        setTotalPages(1);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load payments');
     } finally {
@@ -48,7 +62,7 @@ export default function PaymentsPage() {
       router.push('/login');
       return;
     }
-    loadPayments();
+    loadPayments(1);
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -302,6 +316,30 @@ export default function PaymentsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
+              <span className="text-slate-500 font-medium">
+                Page {page} of {totalPages} ({totalRecords} total records)
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => loadPayments(page - 1)}
+                  disabled={page <= 1}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold disabled:opacity-40 hover:bg-slate-200 transition"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => loadPayments(page + 1)}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold disabled:opacity-40 hover:bg-slate-200 transition"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

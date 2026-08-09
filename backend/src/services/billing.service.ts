@@ -57,17 +57,29 @@ export async function calculateMonthlyBilling(
   const startDate = getStartOfMonth(year, month);
   const endDate = getEndOfMonth(year, month);
 
-  // Fetch meal exceptions for this user in the specified month range
-  const allExceptions = await prisma.mealException.findMany({
-    where: {
-      userId,
-      date: {
-        gte: startDate,
-        lte: endDate
-      }
-    },
-    orderBy: { date: 'asc' }
-  });
+  // Fetch meal exceptions and advance payments concurrently for this user in the specified month range
+  const [allExceptions, allPayments] = await Promise.all([
+    prisma.mealException.findMany({
+      where: {
+        userId,
+        date: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      orderBy: { date: 'asc' }
+    }),
+    prisma.advancePayment.findMany({
+      where: {
+        userId,
+        paymentDate: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      orderBy: { paymentDate: 'asc' }
+    })
+  ]);
 
   // Strictly filter exceptions belonging to year & month
   const mealExceptions = allExceptions.filter((exc) => isDateInMonth(exc.date, year, month));
@@ -90,18 +102,6 @@ export async function calculateMonthlyBilling(
   });
 
   const actualBill = defaultMonthlyAmount - totalDeductions;
-
-  // Fetch advance payments for this user in the specified month range
-  const allPayments = await prisma.advancePayment.findMany({
-    where: {
-      userId,
-      paymentDate: {
-        gte: startDate,
-        lte: endDate
-      }
-    },
-    orderBy: { paymentDate: 'asc' }
-  });
 
   // Strictly filter payments belonging to year & month
   const advancePayments = allPayments.filter((p) => isDateInMonth(p.paymentDate, year, month));

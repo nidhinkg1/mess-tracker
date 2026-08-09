@@ -23,7 +23,31 @@ export async function createPayment(userId: string, data: { amount: number; paym
   return payment;
 }
 
-export async function getUserPayments(userId: string) {
+export async function getUserPayments(userId: string, page?: number, limit?: number) {
+  if (page && limit && page > 0 && limit > 0) {
+    const validPage = Math.max(1, page);
+    const validLimit = Math.min(100, Math.max(1, limit));
+    const skip = (validPage - 1) * validLimit;
+    const [data, total] = await Promise.all([
+      prisma.advancePayment.findMany({
+        where: { userId },
+        orderBy: { paymentDate: 'desc' },
+        skip,
+        take: validLimit
+      }),
+      prisma.advancePayment.count({ where: { userId } })
+    ]);
+    return {
+      data,
+      pagination: {
+        page: validPage,
+        limit: validLimit,
+        total,
+        totalPages: Math.ceil(total / validLimit)
+      }
+    };
+  }
+
   return prisma.advancePayment.findMany({
     where: { userId },
     orderBy: { paymentDate: 'desc' }
