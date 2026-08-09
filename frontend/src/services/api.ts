@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = '/api';
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
@@ -6,30 +6,34 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     ...(options.headers as Record<string, string>)
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-    credentials: 'include'
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+      credentials: 'include'
+    });
 
-  const data = await response.json().catch(() => ({}));
+    const data = await response.json().catch(() => ({}));
 
-  if (!response.ok) {
-    // If unauthenticated, redirect to login unless already on login/register/share page
-    if (response.status === 401 && typeof window !== 'undefined') {
-      const isPublicPage =
-        window.location.pathname.includes('/login') ||
-        window.location.pathname.includes('/register') ||
-        window.location.pathname.startsWith('/share/');
+    if (!response.ok) {
+      // Differentiate 401 unauthenticated response from generic errors
+      if (response.status === 401 && typeof window !== 'undefined') {
+        const isPublicPage =
+          window.location.pathname.includes('/login') ||
+          window.location.pathname.includes('/register') ||
+          window.location.pathname.startsWith('/share/');
 
-      if (!isPublicPage) {
-        window.location.href = '/login?session_expired=true';
+        if (!isPublicPage) {
+          window.location.href = '/login?session_expired=true';
+        }
       }
+      throw new Error(data.error || 'An error occurred while communicating with the server');
     }
-    throw new Error(data.error || 'An error occurred while communicating with the server');
-  }
 
-  return data;
+    return data;
+  } catch (error: any) {
+    throw error;
+  }
 }
 
 export async function fetchCurrentUser(): Promise<any | null> {

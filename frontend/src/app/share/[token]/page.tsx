@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { fetchApi } from '../../../services/api';
 import {
   Utensils,
   Receipt,
@@ -63,14 +64,7 @@ export default function PublicSharePage() {
       setLoading(true);
       setError('');
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-        const res = await fetch(`${API_BASE_URL}/share/${token}`);
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || 'This share link is no longer available.');
-        }
-
+        const data = await fetchApi(`/share/${token}`);
         setStatement(data);
       } catch (err: any) {
         setError(err.message || 'This share link is no longer available.');
