@@ -14,18 +14,21 @@ dotenv.config();
 const app = express();
 
 const isProduction = process.env.NODE_ENV === 'production';
+const frontendUrl = process.env.FRONTEND_URL;
 
 // Explicit allowed origins for CORS with credentials enabled
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:3000',
-  'http://127.0.0.1:3000'
-].filter(Boolean) as string[];
+const allowedOrigins = isProduction
+  ? [frontendUrl].filter(Boolean)
+  : [
+      frontendUrl,
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. server-to-server or tests) or allowed origins
+      // Allow requests with no origin (e.g. server-to-server or tests) or allowed origins.
       if (!origin || allowedOrigins.includes(origin) || (!isProduction && origin.startsWith('http://localhost:'))) {
         callback(null, true);
       } else {
@@ -43,8 +46,8 @@ app.use(express.json());
 app.use((req, res, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
     const origin = req.headers.origin;
-    if (origin && isProduction && process.env.FRONTEND_URL) {
-      if (origin !== process.env.FRONTEND_URL) {
+    if (origin && isProduction && frontendUrl) {
+      if (origin !== frontendUrl) {
         res.status(403).json({ error: 'CSRF protection: Invalid request origin' });
         return;
       }
