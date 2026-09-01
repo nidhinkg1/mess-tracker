@@ -8,37 +8,33 @@ async function main() {
 
   const defaultPasswordHash = await bcrypt.hash('password123', 10);
 
-  // 1. Create or keep Main User (nidhinkg100@gmail.com)
-  const existingUser1 = await prisma.user.findUnique({ where: { email: 'nidhinkg100@gmail.com' } });
-  let user1 = existingUser1;
+  // 1. Create or update Main User (nidhinkg100@gmail.com)
+  const user1 = await prisma.user.upsert({
+    where: { email: 'nidhinkg100@gmail.com' },
+    update: {
+      passwordHash: defaultPasswordHash
+    },
+    create: {
+      name: 'Nidhin KG',
+      email: 'nidhinkg100@gmail.com',
+      passwordHash: defaultPasswordHash
+    }
+  });
+  console.log(`✅ Seed user updated/created: ${user1.email} (Password: password123)`);
 
-  if (!user1) {
-    user1 = await prisma.user.create({
-      data: {
-        name: 'Nidhin KG',
-        email: 'nidhinkg100@gmail.com',
-        passwordHash: defaultPasswordHash
-      }
-    });
-    console.log(`✅ Created default user: ${user1.email} (Password: password123)`);
-  } else {
-    console.log(`ℹ️ User already exists, preserving password & data: ${user1.email}`);
-  }
-
-  // 2. Create or keep Demo User (resident@example.com)
-  const existingUser2 = await prisma.user.findUnique({ where: { email: 'resident@example.com' } });
-  let user2 = existingUser2;
-
-  if (!user2) {
-    user2 = await prisma.user.create({
-      data: {
-        name: 'Demo Resident',
-        email: 'resident@example.com',
-        passwordHash: defaultPasswordHash
-      }
-    });
-    console.log(`✅ Created default user: ${user2.email} (Password: password123)`);
-  }
+  // 2. Create or update Demo User (resident@example.com)
+  const user2 = await prisma.user.upsert({
+    where: { email: 'resident@example.com' },
+    update: {
+      passwordHash: defaultPasswordHash
+    },
+    create: {
+      name: 'Demo Resident',
+      email: 'resident@example.com',
+      passwordHash: defaultPasswordHash
+    }
+  });
+  console.log(`✅ Seed user updated/created: ${user2.email} (Password: password123)`);
 
   // Ensure default payments exist for user1 if empty
   const paymentsCount1 = await prisma.advancePayment.count({ where: { userId: user1.id } });

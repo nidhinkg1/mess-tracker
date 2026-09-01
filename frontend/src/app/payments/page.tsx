@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi } from '../../services/api';
-import { CreditCard, Plus, Trash2, Edit2, AlertCircle, CheckCircle2, Calendar, FileText } from 'lucide-react';
+import { CreditCard, Plus, Trash2, Edit2, AlertCircle, CheckCircle2, Calendar, FileText, Filter } from 'lucide-react';
 
 interface AdvancePayment {
   id: string;
@@ -32,7 +32,40 @@ export default function PaymentsPage() {
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalRecords, setTotalRecords] = useState<number>(0);
-  const limit = 20;
+  const limit = 50;
+
+  // Month filter states
+  const now = new Date();
+  const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
+
+  const formatMonthLabel = (ym: string) => {
+    if (ym === 'ALL') return 'All Months';
+    const [y, m] = ym.split('-');
+    const dateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    const monthName = dateObj.toLocaleString('default', { month: 'long' });
+    return `${monthName} ${y}`;
+  };
+
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    monthsSet.add(currentYearMonth);
+    payments.forEach((p) => {
+      const d = p.paymentDate.split('T')[0];
+      if (d && d.length >= 7) {
+        monthsSet.add(d.substring(0, 7));
+      }
+    });
+    return Array.from(monthsSet).sort().reverse();
+  }, [payments, currentYearMonth]);
+
+  const filteredPayments = useMemo(() => {
+    if (selectedMonth === 'ALL') return payments;
+    return payments.filter((p) => {
+      const d = p.paymentDate.split('T')[0];
+      return d.startsWith(selectedMonth);
+    });
+  }, [payments, selectedMonth]);
 
   const loadPayments = async (targetPage = page) => {
     setLoading(true);
@@ -96,6 +129,12 @@ export default function PaymentsPage() {
         setSuccess('Advance payment recorded successfully');
       }
 
+      // Automatically switch filter to the month of the added/edited payment
+      const paymentYearMonth = paymentDate.substring(0, 7);
+      if (selectedMonth !== 'ALL' && selectedMonth !== paymentYearMonth) {
+        setSelectedMonth(paymentYearMonth);
+      }
+
       setAmount('');
       setNote('');
       setEditingId(null);
@@ -110,8 +149,12 @@ export default function PaymentsPage() {
   const handleEdit = (p: AdvancePayment) => {
     setEditingId(p.id);
     setAmount(String(p.amount));
-    setPaymentDate(p.paymentDate.split('T')[0]);
+    const d = p.paymentDate.split('T')[0];
+    setPaymentDate(d);
     setNote(p.note || '');
+    if (d && d.length >= 7) {
+      setSelectedMonth(d.substring(0, 7));
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -134,7 +177,7 @@ export default function PaymentsPage() {
     setNote('');
   };
 
-  const totalAdvancePaid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalAdvancePaid = filteredPayments.reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -150,7 +193,9 @@ export default function PaymentsPage() {
           </p>
         </div>
         <div className="bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl self-start sm:self-auto">
-          <span className="text-[11px] sm:text-xs text-slate-500 block uppercase font-bold tracking-wider">Total Logged Advance</span>
+          <span className="text-[11px] sm:text-xs text-slate-500 block uppercase font-bold tracking-wider">
+            {selectedMonth === 'ALL' ? 'Total Advance (All Months)' : `Advance in ${formatMonthLabel(selectedMonth)}`}
+          </span>
           <span className="text-lg sm:text-xl font-black text-emerald-700">₹{totalAdvancePaid}</span>
         </div>
       </div>
@@ -243,10 +288,35 @@ export default function PaymentsPage() {
 
         {/* History Table */}
         <div className="lg:col-span-2 glass-card p-4 sm:p-6 space-y-4">
-          <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-emerald-600 shrink-0" />
-            <span>Payment History ({payments.length})</span>
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-emerald-600 shrink-0" />
+              <span>
+                Payment History ({filteredPayments.length})
+              </span>
+            </h2>
+
+            {/* Month Filter Selector */}
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <label htmlFor="monthFilterPayments" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                Month:
+              </label>
+              <select
+                id="monthFilterPayments"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="text-xs font-bold bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              >
+                {availableMonths.map((ym) => (
+                  <option key={ym} value={ym}>
+                    {formatMonthLabel(ym)} {ym === currentYearMonth ? '• Active' : ''}
+                  </option>
+                ))}
+                <option value="ALL">All Months (History)</option>
+              </select>
+            </div>
+          </div>
 
           {loading ? (
             <div className="animate-pulse space-y-3">
@@ -254,9 +324,11 @@ export default function PaymentsPage() {
                 <div key={i} className="h-14 bg-slate-100 rounded-lg" />
               ))}
             </div>
-          ) : payments.length === 0 ? (
+          ) : filteredPayments.length === 0 ? (
             <div className="text-center py-12 border border-dashed border-slate-200 rounded-xl text-slate-500 text-sm font-medium">
-              No advance payments recorded yet. Use the form to log your first payment.
+              {selectedMonth === 'ALL'
+                ? 'No advance payments recorded yet. Use the form to log your first payment.'
+                : `No advance payments recorded for ${formatMonthLabel(selectedMonth)}.`}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -270,7 +342,7 @@ export default function PaymentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {payments.map((p) => (
+                  {filteredPayments.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="p-3 font-bold text-slate-900">
                         <div className="flex items-center gap-2">
@@ -314,7 +386,7 @@ export default function PaymentsPage() {
             </div>
           )}
 
-          {totalPages > 1 && (
+          {totalPages > 1 && selectedMonth === 'ALL' && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
               <span className="text-slate-500 font-medium">
                 Page {page} of {totalPages} ({totalRecords} total records)

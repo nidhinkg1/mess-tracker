@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi } from '../../services/api';
-import { CalendarX, Plus, Trash2, Edit2, AlertCircle, CheckCircle2, Calendar, Utensils, Info } from 'lucide-react';
+import { CalendarX, Plus, Trash2, Edit2, AlertCircle, CheckCircle2, Calendar, Utensils, Info, Filter } from 'lucide-react';
 
 interface MealException {
   id: string;
@@ -33,7 +33,40 @@ export default function MealExceptionsPage() {
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalRecords, setTotalRecords] = useState<number>(0);
-  const limit = 20;
+  const limit = 50;
+
+  // Month filter states
+  const now = new Date();
+  const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
+
+  const formatMonthLabel = (ym: string) => {
+    if (ym === 'ALL') return 'All Months';
+    const [y, m] = ym.split('-');
+    const dateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    const monthName = dateObj.toLocaleString('default', { month: 'long' });
+    return `${monthName} ${y}`;
+  };
+
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    monthsSet.add(currentYearMonth);
+    exceptions.forEach((exc) => {
+      const d = exc.formattedDate || exc.date.split('T')[0];
+      if (d && d.length >= 7) {
+        monthsSet.add(d.substring(0, 7));
+      }
+    });
+    return Array.from(monthsSet).sort().reverse();
+  }, [exceptions, currentYearMonth]);
+
+  const filteredExceptions = useMemo(() => {
+    if (selectedMonth === 'ALL') return exceptions;
+    return exceptions.filter((exc) => {
+      const d = exc.formattedDate || exc.date.split('T')[0];
+      return d.startsWith(selectedMonth);
+    });
+  }, [exceptions, selectedMonth]);
 
   const loadExceptions = async (targetPage = page) => {
     setLoading(true);
@@ -83,6 +116,12 @@ export default function MealExceptionsPage() {
         setSuccess('Meal exception logged successfully');
       }
 
+      // Automatically switch filter to the month of the added/edited exception
+      const exceptionYearMonth = date.substring(0, 7);
+      if (selectedMonth !== 'ALL' && selectedMonth !== exceptionYearMonth) {
+        setSelectedMonth(exceptionYearMonth);
+      }
+
       setEditingId(null);
       loadExceptions();
     } catch (err: any) {
@@ -94,8 +133,12 @@ export default function MealExceptionsPage() {
 
   const handleEdit = (exc: MealException) => {
     setEditingId(exc.id);
-    setDate(exc.formattedDate || exc.date.split('T')[0]);
+    const d = exc.formattedDate || exc.date.split('T')[0];
+    setDate(d);
     setType(exc.type);
+    if (d && d.length >= 7) {
+      setSelectedMonth(d.substring(0, 7));
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -117,7 +160,7 @@ export default function MealExceptionsPage() {
     setType('NO_FOOD');
   };
 
-  const totalDeductions = exceptions.reduce((sum, exc) => sum + exc.deduction, 0);
+  const totalDeductions = filteredExceptions.reduce((sum, exc) => sum + exc.deduction, 0);
 
   return (
     <div className="space-y-6">
@@ -133,7 +176,9 @@ export default function MealExceptionsPage() {
           </p>
         </div>
         <div className="bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl self-start sm:self-auto">
-          <span className="text-[11px] sm:text-xs text-slate-500 block uppercase font-bold tracking-wider">Total Deductions Saved</span>
+          <span className="text-[11px] sm:text-xs text-slate-500 block uppercase font-bold tracking-wider">
+            {selectedMonth === 'ALL' ? 'Total Saved (All Months)' : `Saved in ${formatMonthLabel(selectedMonth)}`}
+          </span>
           <span className="text-lg sm:text-xl font-black text-emerald-600">₹{totalDeductions}</span>
         </div>
       </div>
@@ -293,10 +338,35 @@ export default function MealExceptionsPage() {
 
         {/* Exceptions History Table */}
         <div className="lg:col-span-2 glass-card p-4 sm:p-6 space-y-4">
-          <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Utensils className="h-5 w-5 text-emerald-600 shrink-0" />
-            <span>Exception Log ({exceptions.length})</span>
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Utensils className="h-5 w-5 text-emerald-600 shrink-0" />
+              <span>
+                Exception Log ({filteredExceptions.length})
+              </span>
+            </h2>
+
+            {/* Month Filter Selector */}
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <label htmlFor="monthFilter" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                Month:
+              </label>
+              <select
+                id="monthFilter"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="text-xs font-bold bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              >
+                {availableMonths.map((ym) => (
+                  <option key={ym} value={ym}>
+                    {formatMonthLabel(ym)} {ym === currentYearMonth ? '• Active' : ''}
+                  </option>
+                ))}
+                <option value="ALL">All Months (History)</option>
+              </select>
+            </div>
+          </div>
 
           {loading ? (
             <div className="animate-pulse space-y-3">
@@ -304,9 +374,11 @@ export default function MealExceptionsPage() {
                 <div key={i} className="h-14 bg-slate-100 rounded-lg" />
               ))}
             </div>
-          ) : exceptions.length === 0 ? (
+          ) : filteredExceptions.length === 0 ? (
             <div className="text-center py-12 border border-dashed border-slate-200 rounded-xl text-slate-500 text-sm font-medium">
-              No meal exceptions recorded yet. Every day defaults to normal ₹115 meal billing.
+              {selectedMonth === 'ALL'
+                ? 'No meal exceptions recorded yet. Every day defaults to normal ₹115 meal billing.'
+                : `No meal exceptions recorded for ${formatMonthLabel(selectedMonth)}. Every day defaults to normal ₹115 meal billing.`}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -322,7 +394,7 @@ export default function MealExceptionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {exceptions.map((exc) => (
+                  {filteredExceptions.map((exc) => (
                     <tr key={exc.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="p-3 font-bold text-slate-900">
                         <div className="flex items-center gap-2">
@@ -363,7 +435,7 @@ export default function MealExceptionsPage() {
             </div>
           )}
 
-          {totalPages > 1 && (
+          {totalPages > 1 && selectedMonth === 'ALL' && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
               <span className="text-slate-500 font-medium">
                 Page {page} of {totalPages} ({totalRecords} total records)
