@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { fetchCurrentUser, logoutUser } from '../services/api';
-import { Utensils, CreditCard, CalendarX, LayoutDashboard, LogOut, User, KeyRound, Menu, X } from 'lucide-react';
+import { Utensils, CreditCard, CalendarX, LayoutDashboard, LogOut, User, KeyRound, Menu, X, Download } from 'lucide-react';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -27,6 +27,12 @@ export default function Navbar() {
       isMounted = false;
     };
   }, [pathname]);
+
+  const triggerInstall = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
+    }
+  };
 
   // Hide complete navbar on public share statement pages, login, and register
   if (pathname === '/login' || pathname === '/register' || pathname.startsWith('/share/')) {
@@ -98,6 +104,15 @@ export default function Navbar() {
 
         {/* Desktop Right Controls */}
         <div className="hidden md:flex items-center gap-2.5">
+          <button
+            onClick={triggerInstall}
+            className="flex items-center gap-1.5 text-xs text-teal-800 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition font-bold shadow-sm active:scale-95"
+            title="Install Application"
+          >
+            <Download className="h-3.5 w-3.5 text-teal-700" />
+            <span>Install App</span>
+          </button>
+
           {currentUser ? (
             <>
               <Link
@@ -135,6 +150,15 @@ export default function Navbar() {
 
         {/* Mobile Hamburger Toggle Button */}
         <div className="flex md:hidden items-center gap-2">
+          <button
+            onClick={triggerInstall}
+            className="flex items-center gap-1 text-xs text-teal-800 bg-teal-50 px-2.5 py-1.5 rounded-lg border border-teal-200 font-bold"
+            title="Install App"
+          >
+            <Download className="h-3.5 w-3.5 text-teal-700" />
+            <span className="text-[11px]">Install</span>
+          </button>
+
           {currentUser && (
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -199,6 +223,17 @@ export default function Navbar() {
               <KeyRound className="h-4 w-4" />
               <span>Reset Password</span>
             </Link>
+
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                triggerInstall();
+              }}
+              className="w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-teal-800 bg-teal-50 border border-teal-200 hover:bg-teal-100 transition"
+            >
+              <Download className="h-4 w-4 text-teal-700" />
+              <span>Install Mobile App</span>
+            </button>
           </div>
 
           <div className="pt-2 border-t border-slate-100">
